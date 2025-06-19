@@ -1,0 +1,48 @@
+# === Global ===
+.env
+.env.*           # All environment-specific files
+*.log
+.DS_Store
+*.local
+*.swp
+*.swo
+
+# === Node (frontend) ===
+**/node_modules/
+**/.next/
+**/.turbo/
+**/out/
+**/dist/
+**/build/
+
+# Next.js output 
+frontend/.next/
+frontend/out/
+
+# Vercel/Netlify deploy folders
+.vercel/
+.netlify/
+
+# === Go (backend) ===
+**/bin/
+**/pkg/
+**/vendor/
+**/*.test
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+backend/avatars/
+
+# Go build output
+**/go.work.sum
+
+# === Editor / IDE ===
+.vscode/
+.idea/
+*.code-workspace
+
+# === OS ===
+Thumbs.db
+.DS_Store
