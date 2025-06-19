@@ -21,8 +21,8 @@ func NewHandlers(db *gorm.DB) *Handlers {
 	friendsRepo := repository_adapters.NewFriendsGormRepo(db)
 	messageRepo := repository_adapters.NewMessageGormRepo(db)
 
-	authService := service.NewAuthService()
 	userService := service.NewUserService(userRepo)
+	authService := service.NewAuthService(userRepo)
 	friendsService := service.NewFriendsService(friendsRepo)
 	messageService := service.NewMessageService(messageRepo, userRepo)
 
@@ -31,7 +31,7 @@ func NewHandlers(db *gorm.DB) *Handlers {
 	go wsHub.Run()
 
 	authHandler := NewAuthHandler(authService, userService)
-	userHandler := NewUserHandler(userService)
+	userHandler := NewUserHandler(userService, authService)
 	friendsHandler := NewFriendsHandler(friendsService)
 	messageHandler := NewMessageHandler(messageService)
 

@@ -77,6 +77,7 @@ func SetupRoutes(r chi.Router, db *gorm.DB, h *handlers.Handlers) error {
 			r.Use(middlerware.RequireAuth)
 			r.Post("/", h.Message.SendMessageHandler)
 			r.Get("/conversations", h.Message.GetConversationsHandler)
+			r.Get("/conversations/search", h.Message.SearchConversationsHandler)
 			r.Get("/{userID}", h.Message.GetMessagesHandler)
 			r.Put("/read/{userID}", h.Message.MarkAsReadHandler)
 			r.Get("/unread/{userID}", h.Message.GetUnreadCountHandler)
