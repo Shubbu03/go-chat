@@ -1,7 +1,6 @@
 package middlerware
 
 import (
-	"fmt"
 	"net/http"
 	"strconv"
 	"sync"
@@ -117,14 +116,14 @@ func RateLimit(endpointType string) func(http.Handler) http.Handler {
 
 			if !globalRateLimiter.checkIPRateLimit(clientIP, config) {
 				pkg.WriteErrorResponse(w, http.StatusTooManyRequests, 
-					fmt.Sprintf("Rate limit exceeded for IP. Try again in a minute."))
+					"Rate limit exceeded for IP. Try again in a minute.")
 				return
 			}
 
 			if userID := getUserIDFromContext(r); userID != 0 {
 				if !globalRateLimiter.checkUserRateLimit(userID, config) {
 					pkg.WriteErrorResponse(w, http.StatusTooManyRequests, 
-						fmt.Sprintf("Rate limit exceeded for user. Try again in a minute."))
+						"Rate limit exceeded for user. Try again in a minute.")
 					return
 				}
 			}
