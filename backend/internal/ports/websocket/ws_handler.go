@@ -1,40 +1,29 @@
 package websocket
 
 import (
-	"fmt"
-	"net/http"
+	"go-chat/internal/domain"
 
 	"github.com/gorilla/websocket"
 )
 
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+type WSHandler interface {
+	HandleConnection(conn *websocket.Conn, userID uint) error
+	DisconnectUser(userID uint)
+
+	BroadcastMessage(message *domain.WSMessage, targetUserID uint) error
+	BroadcastToAll(message *domain.WSMessage) error
+
+	SetUserOnline(userID uint)
+	SetUserOffline(userID uint)
+	IsUserOnline(userID uint) bool
+	GetOnlineUsers() []uint
+
+	BroadcastTyping(senderID, receiverID uint) error
+	BroadcastStopTyping(senderID, receiverID uint) error
 }
 
-func ServeWS(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		http.Error(w, "Could not open websocket connection", http.StatusBadRequest)
-		return
-	}
-
-	go handleMessages(conn)
-}
-
-func handleMessages(conn *websocket.Conn) {
-	defer conn.Close()
-
-	for {
-		_, msg, err := conn.ReadMessage()
-		if err != nil {
-			fmt.Println("error reading:", err)
-			break
-		}
-
-		err = conn.WriteMessage(websocket.TextMessage, msg)
-		if err != nil {
-			fmt.Println("error writing:", err)
-			break
-		}
-	}
+type WSClient struct {
+	UserID uint
+	Conn   *websocket.Conn
+	Send   chan *domain.WSMessage
 }
