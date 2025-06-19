@@ -47,7 +47,7 @@ var rateLimitConfigs = map[string]RateLimitConfig{
 		BurstSize:         5,
 	},
 	"friends": {
-		RequestsPerMinute: 20
+		RequestsPerMinute: 20,
 		BurstSize:         5,
 	},
 	"default": {
