@@ -42,3 +42,10 @@ func WriteErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 		"error": message,
 	})
 }
+
+func ToString(v interface{}) string {
+	if v == nil {
+		return "<nil>"
+	}
+	return fmt.Sprintf("%v", v)
+}
