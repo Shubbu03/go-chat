@@ -25,7 +25,6 @@ frontend/out/
 
 # === Go (backend) ===
 **/bin/
-**/pkg/
 **/vendor/
 **/*.test
 *.exe
