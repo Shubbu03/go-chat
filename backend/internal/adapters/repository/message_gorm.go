@@ -41,56 +41,76 @@ func (r *messageGormRepo) GetMessagesBetweenUsers(userID1, userID2 uint, limit, 
 }
 
 func (r *messageGormRepo) GetUserConversations(userID uint) ([]*domain.ConversationResponse, error) {
-	var conversations []*domain.ConversationResponse
+	type ConversationUser struct {
+		UserID      uint      `json:"user_id"`
+		Username    string    `json:"username"`
+		FullName    string    `json:"full_name"`
+		LastMsgTime time.Time `json:"last_msg_time"`
+	}
 	
-	query := `
+	var conversationUsers []ConversationUser
+	
+	err := r.db.Raw(`
 		SELECT DISTINCT 
 			CASE 
 				WHEN m.sender_id = ? THEN m.receiver_id 
 				ELSE m.sender_id 
 			END as user_id,
-			u.username,
-			u.full_name
+			u.email as username,
+			u.name as full_name,
+			MAX(m.created_at) as last_msg_time
 		FROM messages m
 		JOIN users u ON u.id = CASE 
 			WHEN m.sender_id = ? THEN m.receiver_id 
 			ELSE m.sender_id 
 		END
-		WHERE m.sender_id = ? OR m.receiver_id = ?
-		ORDER BY user_id
-	`
+		WHERE (m.sender_id = ? OR m.receiver_id = ?) 
+			AND m.deleted_at IS NULL 
+			AND u.deleted_at IS NULL
+		GROUP BY 
+			CASE 
+				WHEN m.sender_id = ? THEN m.receiver_id 
+				ELSE m.sender_id 
+			END, u.email, u.name
+		ORDER BY last_msg_time DESC
+	`, userID, userID, userID, userID, userID).Scan(&conversationUsers).Error
 	
-	rows, err := r.db.Raw(query, userID, userID, userID, userID).Rows()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	
-	for rows.Next() {
-		var conv domain.ConversationResponse
-		if err := rows.Scan(&conv.UserID, &conv.Username, &conv.FullName); err != nil {
-			continue
+	var conversations []*domain.ConversationResponse
+	
+	for _, convUser := range conversationUsers {
+		conv := &domain.ConversationResponse{
+			UserID:   convUser.UserID,
+			Username: convUser.Username,
+			FullName: convUser.FullName,
 		}
 		
-		lastMessage, _ := r.GetLatestMessageBetweenUsers(userID, conv.UserID)
-		if lastMessage != nil {
+		lastMessage, err := r.GetLatestMessageBetweenUsers(userID, conv.UserID)
+		if err == nil && lastMessage != nil {
 			conv.LastMessage = &domain.MessageResponse{
-				ID:          lastMessage.ID,
-				SenderID:    lastMessage.SenderID,
-				ReceiverID:  lastMessage.ReceiverID,
-				Content:     lastMessage.Content,
-				MessageType: lastMessage.MessageType,
-				IsRead:      lastMessage.IsRead,
-				IsDelivered: lastMessage.IsDelivered,
-				CreatedAt:   lastMessage.CreatedAt,
-				UpdatedAt:   lastMessage.UpdatedAt,
+				ID:             lastMessage.ID,
+				SenderID:       lastMessage.SenderID,
+				ReceiverID:     lastMessage.ReceiverID,
+				Content:        lastMessage.Content,
+				MessageType:    lastMessage.MessageType,
+				IsRead:         lastMessage.IsRead,
+				IsDelivered:    lastMessage.IsDelivered,
+				CreatedAt:      lastMessage.CreatedAt,
+				UpdatedAt:      lastMessage.UpdatedAt,
+				SenderName:     lastMessage.Sender.Name,
+				SenderUsername: lastMessage.Sender.Email,
 			}
 		}
 		
-		unreadCount, _ := r.GetUnreadMessageCount(conv.UserID, userID)
-		conv.UnreadCount = unreadCount
+		unreadCount, err := r.GetUnreadMessageCount(conv.UserID, userID)
+		if err == nil {
+			conv.UnreadCount = unreadCount
+		}
 		
-		conversations = append(conversations, &conv)
+		conversations = append(conversations, conv)
 	}
 	
 	return conversations, nil
@@ -155,10 +175,16 @@ func (r *messageGormRepo) SearchMessages(userID uint, query string, limit, offse
 	searchQuery := fmt.Sprintf("%%%s%%", query)
 	
 	err := r.db.
-		Where("(sender_id = ? OR receiver_id = ?) AND content ILIKE ?", userID, userID, searchQuery).
+		Joins("LEFT JOIN users sender ON messages.sender_id = sender.id").
+		Joins("LEFT JOIN users receiver ON messages.receiver_id = receiver.id").
+		Where(`(messages.sender_id = ? OR messages.receiver_id = ?) AND 
+			   (messages.content ILIKE ? OR 
+			    sender.name ILIKE ? OR 
+			    receiver.name ILIKE ?)`, 
+			userID, userID, searchQuery, searchQuery, searchQuery).
 		Preload("Sender").
 		Preload("Receiver").
-		Order("created_at DESC").
+		Order("messages.created_at DESC").
 		Limit(limit).
 		Offset(offset).
 		Find(&messages).Error

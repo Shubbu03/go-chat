@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"go-chat/internal/domain"
 	"go-chat/internal/middlerware"
 	"go-chat/internal/service"
 	"go-chat/pkg"
@@ -11,61 +12,62 @@ import (
 
 type UserHandler struct {
 	userService *service.UserService
+	authService *service.AuthService
 }
 
-func NewUserHandler(us *service.UserService) *UserHandler {
-	return &UserHandler{userService: us}
+func NewUserHandler(us *service.UserService, as *service.AuthService) *UserHandler {
+	return &UserHandler{
+		userService: us,
+		authService: as,
+	}
 }
 
 func (h *UserHandler) SignupHandler(w http.ResponseWriter, r *http.Request) {
-	type reqBody struct {
-		Name     string `json:"name"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
-	var body reqBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
+	var req domain.SignupRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	hashedPassword := pkg.HashPassword(body.Password)
-	err := h.userService.Signup(body.Name, body.Email, string(hashedPassword))
+	// Check if email already exists
+	exists, err := h.authService.CheckEmailExists(req.Email)
+	if err != nil {
+		http.Error(w, "Failed to check email availability", http.StatusInternalServerError)
+		return
+	}
+	if exists {
+		http.Error(w, "Email already registered", http.StatusConflict)
+		return
+	}
+
+	hashedPassword := pkg.HashPassword(req.Password)
+	err = h.userService.Signup(req.Name, req.Email, string(hashedPassword))
 	if err != nil {
 		http.Error(w, "Failed to create user", http.StatusInternalServerError)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("User created"))
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "User created successfully",
+	})
 }
 
 func (h *UserHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
-	type reqBody struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
-	}
-
-	var body reqBody
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-		http.Error(w, "Invalid body", http.StatusBadRequest)
+	var req domain.LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.userService.Login(body.Email)
+	user, err := h.authService.AuthenticateUser(req.Email, req.Password)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusUnauthorized)
+		http.Error(w, "Invalid credentials", http.StatusUnauthorized)
 		return
 	}
 
-	validPassword := pkg.ComparePassword(body.Password, []byte(user.Password))
-	if !validPassword {
-		http.Error(w, "Unauthorised", http.StatusUnauthorized)
-		return
-	}
-
-	tokens, err := pkg.GenerateTokenPair(user.ID, user.Email, user.Name)
+	tokens, err := h.authService.GenerateTokens(user)
 	if err != nil {
 		log.Printf("Error generating tokens: %v", err)
 		http.Error(w, "Could not generate authentication tokens", http.StatusInternalServerError)
@@ -79,6 +81,7 @@ func (h *UserHandler) LoginHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":       "Logged in successfully",
+		"user":          user.ToResponse(),
 		"access_token":  tokens.AccessToken,
 		"refresh_token": tokens.RefreshToken,
 		"expires_in":    tokens.ExpiresIn,
@@ -92,12 +95,7 @@ func (h *UserHandler) UpdateProfileHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	type updateProfileRequest struct {
-		Name  string `json:"name"`
-		Email string `json:"email"`
-	}
-
-	var req updateProfileRequest
+	var req domain.UpdateProfileRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
@@ -112,7 +110,7 @@ func (h *UserHandler) UpdateProfileHandler(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": "Profile updated successfully",
-		"user":    updatedUser,
+		"user":    updatedUser.ToResponse(),
 	})
 }
 
@@ -135,9 +133,16 @@ func (h *UserHandler) SearchUsersHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	// Convert to safe user responses
+	userResponses := make([]*domain.UserResponse, len(users))
+	for i, user := range users {
+		userResponses[i] = user.ToResponse()
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"users": users,
+		"users": userResponses,
 		"query": query,
+		"count": len(userResponses),
 	})
 }

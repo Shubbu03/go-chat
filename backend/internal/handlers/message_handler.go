@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"go-chat/internal/domain"
 	"go-chat/internal/service"
@@ -175,9 +176,19 @@ func (h *MessageHandler) DeleteMessageHandler(w http.ResponseWriter, r *http.Req
 func (h *MessageHandler) SearchMessagesHandler(w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value("userID").(uint)
 	
-	query := r.URL.Query().Get("q")
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
 		pkg.WriteErrorResponse(w, http.StatusBadRequest, "Search query is required")
+		return
+	}
+	
+	if len(query) < 2 {
+		pkg.WriteErrorResponse(w, http.StatusBadRequest, "Search query must be at least 2 characters long")
+		return
+	}
+	
+	if len(query) > 100 {
+		pkg.WriteErrorResponse(w, http.StatusBadRequest, "Search query too long (maximum 100 characters)")
 		return
 	}
 	
@@ -212,6 +223,45 @@ func (h *MessageHandler) SearchMessagesHandler(w http.ResponseWriter, r *http.Re
 			"limit":  limit,
 			"offset": offset,
 			"count":  len(messages),
+		},
+	})
+}
+
+func (h *MessageHandler) SearchConversationsHandler(w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value("userID").(uint)
+	
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		pkg.WriteErrorResponse(w, http.StatusBadRequest, "Search query is required")
+		return
+	}
+	
+	if len(query) < 2 {
+		pkg.WriteErrorResponse(w, http.StatusBadRequest, "Search query must be at least 2 characters long")
+		return
+	}
+	
+	conversations, err := h.messageService.GetUserConversations(userID)
+	if err != nil {
+		pkg.WriteErrorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	
+	var filteredConversations []*domain.ConversationResponse
+	queryLower := strings.ToLower(query)
+	
+	for _, conv := range conversations {
+		if strings.Contains(strings.ToLower(conv.FullName), queryLower) ||
+		   strings.Contains(strings.ToLower(conv.Username), queryLower) {
+			filteredConversations = append(filteredConversations, conv)
+		}
+	}
+	
+	pkg.WriteJSONResponse(w, http.StatusOK, map[string]interface{}{
+		"data": filteredConversations,
+		"meta": map[string]interface{}{
+			"query": query,
+			"count": len(filteredConversations),
 		},
 	})
 }

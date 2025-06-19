@@ -12,8 +12,8 @@ type FriendshipModel struct {
 	AddresseeID uint                      `gorm:"not null;index"`
 	Status      domain.FriendshipStatus   `gorm:"not null;default:'pending'"`
 	
-	Requester UserModel `gorm:"foreignKey:RequesterID"`
-	Addressee UserModel `gorm:"foreignKey:AddresseeID"`
+	Requester domain.User `gorm:"foreignKey:RequesterID"`
+	Addressee domain.User `gorm:"foreignKey:AddresseeID"`
 }
 
 func toFriendshipModel(f *domain.Friendship) *FriendshipModel {
@@ -36,10 +36,10 @@ func toDomainFriendship(f *FriendshipModel) *domain.Friendship {
 	}
 	
 	if f.Requester.ID != 0 {
-		friendship.Requester = toDomainUser(&f.Requester)
+		friendship.Requester = &f.Requester
 	}
 	if f.Addressee.ID != 0 {
-		friendship.Addressee = toDomainUser(&f.Addressee)
+		friendship.Addressee = &f.Addressee
 	}
 	
 	return friendship
