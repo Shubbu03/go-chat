@@ -27,5 +27,17 @@ func (s *UserService) Login(email string) (*domain.User, error) {
 }
 
 func (s *UserService) GetUserByID(id uint) (*domain.User, error) {
-	return s.repo.FindByID(id)
+	return s.repo.GetUserByID(id)
+}
+
+func (s *UserService) UpdatePasswordByID(id uint, password string) (*domain.User, error) {
+	return s.repo.UpdatePassword(id, password)
+}
+
+func (s *UserService) UpdateProfile(userID uint, name, email string) (*domain.User, error) {
+	return s.repo.UpdateUserProfile(userID, name, email)
+}
+
+func (s *UserService) SearchUsers(query string, userID uint) ([]*domain.User, error) {
+	return s.repo.SearchUsers(query, userID)
 }
