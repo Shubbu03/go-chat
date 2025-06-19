@@ -3,8 +3,10 @@ package pkg
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -157,63 +159,47 @@ func ValidateRefreshToken(tokenString string) (*RefreshClaims, error) {
 	return nil, fmt.Errorf("invalid refresh token")
 }
 
+func ExtractUserIDFromRequest(r *http.Request) (uint, error) {
+	tokenString, err := ExtractTokenFromRequest(r)
+	if err != nil {
+		return 0, err
+	}
+
+	claims, err := ValidateAccessToken(tokenString)
+	if err != nil {
+		return 0, err
+	}
+
+	return claims.UserID, nil
+}
+
+func ExtractTokenFromRequest(r *http.Request) (string, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		if after, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
+			return after, nil
+		}
+	}
+
+	if cookie, err := r.Cookie("access_token"); err == nil {
+		return cookie.Value, nil
+	}
+
+	if token := r.URL.Query().Get("token"); token != "" {
+		return token, nil
+	}
+
+	return "", fmt.Errorf("no authentication token provided")
+}
+
+func ValidateTokenAndGetClaims(tokenString string) (*Claims, error) {
+	return ValidateAccessToken(tokenString)
+}
+
 func GetAccessTokenTTL() time.Duration {
 	return accessTokenTTL
 }
 
 func GetRefreshTokenTTL() time.Duration {
 	return refreshTokenTTL
-}
-
-func CreateAccessToken(userID uint) (string, error) {
-	accessTokenExpirationTime := time.Now().Add(time.Hour * 24)
-
-	accessTokenClaims := jwt.MapClaims{
-		"user_id": strconv.FormatUint(uint64(userID), 10),
-		"exp":     accessTokenExpirationTime.Unix(),
-	}
-
-	accessToken := jwt.NewWithClaims(jwt.SigningMethodHS256, accessTokenClaims)
-	accessTokenString, err := accessToken.SignedString([]byte(GetJWTSecret()))
-
-	if err != nil {
-		return "", fmt.Errorf("could not create access token: %w", err)
-	}
-
-	return accessTokenString, nil
-}
-
-func CreateRefreshToken(userID uint) (string, error) {
-	refreshTokenExpirationTime := time.Now().Add(time.Hour * 24 * 7)
-
-	refreshTokenClaims := jwt.MapClaims{
-		"user_id": strconv.FormatUint(uint64(userID), 10),
-		"exp":     refreshTokenExpirationTime.Unix(),
-	}
-
-	refreshToken := jwt.NewWithClaims(jwt.SigningMethodHS256, refreshTokenClaims)
-	refreshTokenString, err := refreshToken.SignedString([]byte(GetJWTSecret()))
-
-	if err != nil {
-		return "", fmt.Errorf("could not create refresh token: %w", err)
-	}
-
-	return refreshTokenString, nil
-}
-
-func ValidateToken(tokenString string) (*jwt.Token, error) {
-	return jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
-		}
-		return []byte(GetJWTSecret()), nil
-	})
-}
-
-func GetJWTSecret() string {
-	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		secret = "your-secret-key"
-	}
-	return secret
 }
