@@ -4,39 +4,26 @@ import (
 	"context"
 	"go-chat/pkg"
 	"net/http"
-	"strings"
 )
 
 func RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var tokenString string
-		
-		authHeader := r.Header.Get("Authorization")
-		if authHeader != "" {
-			if after, ok :=strings.CutPrefix(authHeader, "Bearer "); ok  {
-				tokenString = after
-			}
+		tokenString, err := pkg.ExtractTokenFromRequest(r)
+		if err != nil {
+			http.Error(w, "No authentication token provided", http.StatusUnauthorized)
+			return
 		}
-		
-		if tokenString == "" {
-			cookie, err := r.Cookie("access_token")
-			if err != nil {
-				http.Error(w, "No authentication token provided", http.StatusUnauthorized)
-				return
-			}
-			tokenString = cookie.Value
-		}
-		
+
 		claims, err := pkg.ValidateAccessToken(tokenString)
 		if err != nil {
 			http.Error(w, "Invalid or expired token", http.StatusUnauthorized)
 			return
 		}
-		
+
 		ctx := context.WithValue(r.Context(), "userID", claims.UserID)
 		ctx = context.WithValue(ctx, "userEmail", claims.Email)
 		ctx = context.WithValue(ctx, "userName", claims.Name)
-		
+
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }

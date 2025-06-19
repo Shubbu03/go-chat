@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"go-chat/internal/domain"
 	"go-chat/internal/middlerware"
 	"go-chat/internal/service"
 	"go-chat/pkg"
@@ -27,21 +28,9 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	refreshClaims, err := pkg.ValidateRefreshToken(cookie.Value)
+	tokens, user, err := h.authService.RefreshTokens(cookie.Value)
 	if err != nil {
-		http.Error(w, "Invalid or expired refresh token", http.StatusUnauthorized)
-		return
-	}
-
-	user, err := h.userService.GetUserByID(refreshClaims.UserID)
-	if err != nil {
-		http.Error(w, "User not found", http.StatusUnauthorized)
-		return
-	}
-
-	tokens, err := pkg.GenerateTokenPair(user.ID, user.Email, user.Name)
-	if err != nil {
-		http.Error(w, "Could not generate new tokens", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -50,6 +39,7 @@ func (h *AuthHandler) RefreshTokenHandler(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message":       "Token refreshed successfully",
+		"user":          user.ToResponse(),
 		"access_token":  tokens.AccessToken,
 		"refresh_token": tokens.RefreshToken,
 		"expires_in":    tokens.ExpiresIn,
@@ -72,21 +62,15 @@ func (h *AuthHandler) GetMeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.userService.GetUserByID(userID)
+	user, err := h.authService.GetUserByID(userID)
 	if err != nil {
 		http.Error(w, "User not found", http.StatusNotFound)
 		return
 	}
 
-	userResponse := map[string]interface{}{
-		"id":    user.ID,
-		"name":  user.Name,
-		"email": user.Email,
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"user": userResponse,
+		"user": user.ToResponse(),
 	})
 }
 
@@ -111,33 +95,15 @@ func (h *AuthHandler) ChangePasswordHandler(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	type changePasswordRequest struct {
-		CurrentPassword string `json:"current_password"`
-		NewPassword     string `json:"new_password"`
-	}
-
-	var req changePasswordRequest
+	var req domain.ChangePasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	user, err := h.userService.GetUserByID(userID)
+	err := h.authService.ChangePassword(userID, req.CurrentPassword, req.NewPassword)
 	if err != nil {
-		http.Error(w, "User not found", http.StatusNotFound)
-		return
-	}
-
-	if !pkg.ComparePassword(req.CurrentPassword, []byte(user.Password)) {
-		http.Error(w, "Current password is incorrect", http.StatusBadRequest)
-		return
-	}
-
-	hashedNewPassword := pkg.HashPassword(req.NewPassword)
-
-	_, err = h.userService.UpdatePasswordByID(userID, string(hashedNewPassword))
-	if err != nil {
-		http.Error(w, "Failed to update password", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -149,7 +115,7 @@ func (h *AuthHandler) ChangePasswordHandler(w http.ResponseWriter, r *http.Reque
 
 func (h *AuthHandler) CheckEmailHandler(w http.ResponseWriter, r *http.Request) {
 	type emailRequest struct {
-		Email string `json:"email"`
+		Email string `json:"email" binding:"required,email"`
 	}
 
 	var req emailRequest
@@ -158,12 +124,15 @@ func (h *AuthHandler) CheckEmailHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	_, err := h.userService.Login(req.Email)
-	emailExists := err == nil
+	exists, err := h.authService.CheckEmailExists(req.Email)
+	if err != nil {
+		http.Error(w, "Failed to check email", http.StatusInternalServerError)
+		return
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"exists": emailExists,
+		"exists": exists,
 		"email":  req.Email,
 	})
 }
