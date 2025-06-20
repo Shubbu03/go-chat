@@ -8,7 +8,6 @@ import (
 
 	"github.com/go-chi/chi/middleware"
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/cors"
 	"gorm.io/gorm"
 )
 
@@ -16,14 +15,7 @@ func SetupRoutes(r chi.Router, db *gorm.DB, h *handlers.Handlers) error {
 	pkg.InitLogger(pkg.INFO, true)
 	middlerware.InitRateLimiter()
 
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://*", "https://*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token", "Cookie"},
-		ExposedHeaders:   []string{"Link", "Set-Cookie"},
-		AllowCredentials: true,
-		MaxAge:           300,
-	}))
+	r.Use(middlerware.Cors())
 
 	r.Use(middlerware.SecurityHeaders)
 	r.Use(middlerware.RecoveryLogging())
@@ -39,7 +31,7 @@ func SetupRoutes(r chi.Router, db *gorm.DB, h *handlers.Handlers) error {
 	r.Route("/api/auth", func(r chi.Router) {
 		r.Use(middlerware.RateLimit("auth"))
 		r.Use(middlerware.AuthLogging())
-		
+
 		r.With(middlerware.ValidateRequest("signup")).Post("/signup", h.User.SignupHandler)
 		r.With(middlerware.ValidateRequest("login")).Post("/login", h.User.LoginHandler)
 		r.Post("/refresh", h.Auth.RefreshTokenHandler)
@@ -84,7 +76,7 @@ func SetupRoutes(r chi.Router, db *gorm.DB, h *handlers.Handlers) error {
 	// Message routes
 	r.Route("/api/messages", func(r chi.Router) {
 		r.Use(middlerware.RateLimit("message"))
-		
+
 		r.Group(func(r chi.Router) {
 			r.Use(middlerware.RequireAuth)
 			r.With(middlerware.ValidateRequest("message")).Post("/", h.Message.SendMessageHandler)
