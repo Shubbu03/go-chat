@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Go Chat",
   description: "A chat app with golang",
+  icons: {
+    icon: "icon.png",
+  },
 };
 
 export default function RootLayout({
