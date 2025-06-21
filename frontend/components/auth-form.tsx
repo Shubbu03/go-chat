@@ -189,7 +189,7 @@ export default function AuthForm({
         <img
           src={imageUrl}
           alt={imageAlt}
-          className="w-full h-full object-cover"
+          className="w-4xl h-full object-cover"
         />
       </div>
     </div>
